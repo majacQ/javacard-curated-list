@@ -1,12 +1,12 @@
 # JavaCard Curated List — Statistics
 
-Source: [crocs-muni/javacard-curated-list](https://github.com/crocs-muni/javacard-curated-list) README, 
-enriched with live data pulled from shields.io GitHub badges (stars, last-commit, contributors).
+Source: [crocs-muni/javacard-curated-list](https://github.com/crocs-muni/javacard-curated-list) README, enriched with live data pulled from shields.io GitHub badges (stars, last-commit, contributors, license).
 
 - Total repository entries found: **222**
 - Entries with a resolvable GitHub star count: **203**
 - Entries with a resolvable last-commit date: **218**
 - Entries with a resolvable contributor count: **203**
+- Entries with a resolvable license: **212**
 
 ## Entries per section
 
@@ -54,20 +54,36 @@ enriched with live data pulled from shields.io GitHub badges (stars, last-commit
 | 11+ | 17 | 7.7% |
 | Unknown | 19 | 8.6% |
 
+## License distribution
+
+| License | Repositories | % of total |
+|---|---|---|
+| Unknown / no license detected | 105 | 47.3% |
+| MIT | 30 | 13.5% |
+| GPL-3.0 | 25 | 11.3% |
+| Apache-2.0 | 17 | 7.7% |
+| not identifiable by github | 15 | 6.8% |
+| AGPL-3.0 | 7 | 3.2% |
+| GPL-2.0 | 7 | 3.2% |
+| BSD-3-Clause | 6 | 2.7% |
+| Unlicense | 4 | 1.8% |
+| LGPL-3.0 | 3 | 1.4% |
+| CC0-1.0 | 1 | 0.5% |
+| MPL-2.0 | 1 | 0.5% |
+| Zlib | 1 | 0.5% |
+
 ## Top 10 most starred repositories
 
 | Repository | Stars | Last commit | Developers |
 |---|---|---|---|
 | [ProGuard Java Optimizer and Obfuscator](https://github.com/Guardsquare/proguard) | 3600 | july | 59 |
-| [GlobalPlatformPro tool](https://github.com/martinpaljak/GlobalPlatformPro) | 925 | june | 31 |
+| [GlobalPlatformPro tool](https://github.com/martinpaljak/GlobalPlatformPro) | 926 | june | 31 |
 | [CardPeek](https://github.com/L1L1/cardpeek) | 512 | november 2019 | 19 |
-| [VeriFast](https://github.com/verifast/verifast) | 496 | may | 46 |
+| [VeriFast](https://github.com/verifast/verifast) | 498 | may | 46 |
 | [ANSSI-FR SmartPGP applet](https://github.com/ANSSI-FR/SmartPGP) | 282 | may | 9 |
-| [JCardSim:](https://github.com/licel/jcardsim) | 273 | june | 29 |
+| [JCardSim:](https://github.com/licel/jcardsim) | 274 | june | 29 |
 | [Ant-JavaCard](https://github.com/martinpaljak/ant-javacard) | 263 | may | 9 |
 | [Status KeyCard](https://github.com/status-im/status-keycard) | 255 | july | 10 |
 | [Yubico OpenPGP applet](https://github.com/Yubico/ykneo-openpgp) | 221 | march 2020 | 16 |
 | [Gauss Key Card](https://github.com/darconeous/gauss-key-card) | 210 | march 2020 | 1 |
-
-
 
