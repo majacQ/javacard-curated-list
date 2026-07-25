@@ -147,6 +147,7 @@ def parse_entries(markdown_text):
                 "raw_line": buf,
                 "main_owner_repo": main_owner_repo,
                 "badges": badge_info,
+                "num_lines": joined,
             })
             i += joined
             continue
@@ -164,6 +165,7 @@ def badge_urls(owner, repo):
         "stars": f"https://img.shields.io/github/stars/{owner}/{repo}.svg?style=social",
         "last_commit": f"https://img.shields.io/github/last-commit/{owner}/{repo}.svg",
         "contributors": f"https://img.shields.io/github/contributors-anon/{owner}/{repo}.svg",
+        "license": f"https://img.shields.io/github/license/{owner}/{repo}.svg",
     }
 
 
@@ -203,7 +205,7 @@ def fetch_with_retries(url, retries=2):
 
 def fetch_repo_badges(owner, repo):
     urls = badge_urls(owner, repo)
-    result = {"stars": None, "last_commit_raw": None, "developers": None, "error": None}
+    result = {"stars": None, "last_commit_raw": None, "developers": None, "license": None, "error": None}
     try:
         stars_svg = fetch_with_retries(urls["stars"])
         result["stars"] = parse_stars_svg(stars_svg)
@@ -223,6 +225,12 @@ def fetch_repo_badges(owner, repo):
             result["developers"] = parse_count_text(val)
     except (HTTPError, URLError, TimeoutError) as e:
         result["error"] = (result["error"] or "") + f" contributors:{e}"
+
+    try:
+        license_svg = fetch_with_retries(urls["license"])
+        result["license"] = parse_aria_label_value(license_svg)
+    except (HTTPError, URLError, TimeoutError) as e:
+        result["error"] = (result["error"] or "") + f" license:{e}"
 
     return result
 
@@ -323,6 +331,17 @@ def dev_bucket(devs):
     if devs <= 10:
         return "4-10"
     return "11+"
+
+
+# shields.io reports this SPDX id when GitHub detected a LICENSE file it couldn't
+# classify against a known license, which reads more like "unknown" than a real license name.
+UNRECOGNIZED_LICENSE_VALUES = {"noassertion", "repo not found", "none", "not specified"}
+
+
+def license_bucket(license_name):
+    if not license_name or license_name.strip().lower() in UNRECOGNIZED_LICENSE_VALUES:
+        return "Unknown / no license detected"
+    return license_name.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +520,72 @@ def write_sanity_report(entries, flagged):
 
 
 # ---------------------------------------------------------------------------
+# --add-license: insert a shields.io license badge right after each entry's
+# numcontributors badge (in place, using OWNER/REPO from the same badge
+# extraction the other badges already use)
+# ---------------------------------------------------------------------------
+
+LICENSE_BADGE_PRESENT_RE = re.compile(r"img\.shields\.io/github/license/", re.IGNORECASE)
+
+
+def run_add_license(path):
+    if path.startswith("http://") or path.startswith("https://"):
+        print("Error: --add-license overwrites the source file in place and only "
+              "supports a local file path, not a URL", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Reading {path} ...", file=sys.stderr)
+    with open(path, encoding="utf-8") as f:
+        original_text = f.read()
+    markdown_text = original_text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = markdown_text.split("\n")
+
+    entries = parse_entries(markdown_text)
+    print(f"  found {len(entries)} entries", file=sys.stderr)
+
+    added = 0
+    skipped = 0
+    for e in entries:
+        contrib = e["badges"]["contributors"]
+        owner, repo = e["owner"], e["repo"]
+        if not contrib["present"] or not owner or not repo:
+            skipped += 1
+            continue
+        if LICENSE_BADGE_PRESENT_RE.search(e["raw_line"]):
+            skipped += 1
+            continue
+
+        start_idx = e["line_no"] - 1
+        end_idx = start_idx + e["num_lines"]
+        for li in range(start_idx, end_idx):
+            m = BADGE_RE["contributors"].search(lines[li])
+            if not m:
+                continue
+            license_md = (
+                f" [![License](https://img.shields.io/github/license/{owner}/{repo})]"
+                f"(https://github.com/{owner}/{repo}/blob/HEAD/LICENSE)"
+            )
+            insert_at = m.end()
+            lines[li] = lines[li][:insert_at] + license_md + lines[li][insert_at:]
+            added += 1
+            break
+        else:
+            skipped += 1
+
+    new_text = "\n".join(lines)
+    if original_text.endswith("\n") and not new_text.endswith("\n"):
+        new_text += "\n"
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_text)
+
+    print(f"Added license badge to {added} entries; skipped {skipped} "
+          f"(no numcontributors badge, no owner/repo, or license badge already present).",
+          file=sys.stderr)
+    print(f"Wrote {path}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
 
@@ -527,10 +612,11 @@ def run_pipeline(path):
             try:
                 badges = fut.result()
             except Exception as exc:
-                badges = {"stars": None, "last_commit_raw": None, "developers": None, "error": str(exc)}
+                badges = {"stars": None, "last_commit_raw": None, "developers": None, "license": None, "error": str(exc)}
             e["stars"] = badges["stars"]
             e["last_commit_raw"] = badges["last_commit_raw"]
             e["developers"] = badges["developers"]
+            e["license"] = badges["license"]
             e["fetch_error"] = badges["error"]
             done += 1
             if done % 25 == 0:
@@ -540,6 +626,7 @@ def run_pipeline(path):
         e.setdefault("stars", None)
         e.setdefault("last_commit_raw", None)
         e.setdefault("developers", None)
+        e.setdefault("license", None)
         e.setdefault("fetch_error", None)
 
         year = last_commit_text_to_year(e["last_commit_raw"])
@@ -553,7 +640,7 @@ def run_pipeline(path):
         writer.writerow([
             "Category", "Subcategory", "Repository", "GitHub Link",
             "Stars", "Last Commit (badge text)", "Last Commit Year (est.)",
-            "Developers",
+            "Developers", "License",
         ])
         for e in entries:
             writer.writerow([
@@ -565,6 +652,7 @@ def run_pipeline(path):
                 e["last_commit_raw"] or (f"last commit {e['manual_last_commit_year']}" if e["manual_last_commit_year"] else ""),
                 e["last_commit_year"] if e["last_commit_year"] is not None else "",
                 e["developers"] if e["developers"] is not None else "",
+                e["license"] or "",
             ])
 
     write_report(entries)
@@ -593,6 +681,13 @@ def write_report(entries):
     for e in entries:
         dev_counts[dev_bucket(e["developers"])] += 1
 
+    with_license = [e for e in entries if e["license"] is not None]
+    license_counts = {}
+    for e in entries:
+        b = license_bucket(e["license"])
+        license_counts[b] = license_counts.get(b, 0) + 1
+    license_order = sorted(license_counts, key=lambda k: (-license_counts[k], k))
+
     cat_order = []
     cat_counts = {}
     for e in entries:
@@ -608,12 +703,13 @@ def write_report(entries):
     lines.append("# JavaCard Curated List — Statistics")
     lines.append("")
     lines.append("Source: [crocs-muni/javacard-curated-list](https://github.com/crocs-muni/javacard-curated-list) README, "
-                  "enriched with live data pulled from shields.io GitHub badges (stars, last-commit, contributors).")
+                  "enriched with live data pulled from shields.io GitHub badges (stars, last-commit, contributors, license).")
     lines.append("")
     lines.append(f"- Total repository entries found: **{total}**")
     lines.append(f"- Entries with a resolvable GitHub star count: **{len(with_stars)}**")
     lines.append(f"- Entries with a resolvable last-commit date: **{len(with_year)}**")
     lines.append(f"- Entries with a resolvable contributor count: **{len(with_devs)}**")
+    lines.append(f"- Entries with a resolvable license: **{len(with_license)}**")
     lines.append("")
 
     lines.append("## Entries per section")
@@ -651,6 +747,14 @@ def write_report(entries):
             lines.append(f"| {k} | {dev_counts[k]} | {100 * dev_counts[k] / total:.1f}% |")
     lines.append("")
 
+    lines.append("## License distribution")
+    lines.append("")
+    lines.append("| License | Repositories | % of total |")
+    lines.append("|---|---|---|")
+    for k in license_order:
+        lines.append(f"| {k} | {license_counts[k]} | {100 * license_counts[k] / total:.1f}% |")
+    lines.append("")
+
     lines.append("## Top 10 most starred repositories")
     lines.append("")
     lines.append("| Repository | Stars | Last commit | Developers |")
@@ -674,9 +778,16 @@ def main():
                               "unresolvable stars/last-commit/developers) instead of building the CSV/report")
     parser.add_argument("--offline", action="store_true",
                          help="With --sanity, skip live shields.io lookups and only run the structural checks")
+    parser.add_argument("--add-license", action="store_true",
+                         help="For each entry with a numcontributors badge, insert a shields.io license badge "
+                              "right after it (using the same owner/repo as the entry's other badges). Entries "
+                              "without a numcontributors badge are left untouched. Rewrites the source file in "
+                              "place, so it only works with a local file path, not a URL.")
     args = parser.parse_args()
 
-    if args.sanity:
+    if args.add_license:
+        run_add_license(args.source)
+    elif args.sanity:
         run_sanity(args.source, offline=args.offline)
     else:
         run_pipeline(args.source)
